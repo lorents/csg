@@ -10,6 +10,5 @@
   <Files>
     <UxFile Path="Scene1.ux" />
     <SourceFile Path="CSG.uno" />
-    <StartupFile Path="Scene1.ux" />
   </Files>
 </Project>

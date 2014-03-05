@@ -64,28 +64,25 @@ public class App : Uno.Application
 	
 	public App()
 	{
-		var cube = CSG.cube(float3(0,0,0), 4.0f);
-		var cube2 = CSG.cube(float3(2,2,2), 2.0f);
-		_polygons = cube.toPolygons(); //.subtract(cube2).toPolygons();
+		var cube = CSG.cube(float3(0,0,0), 20.0f);
+		var cube2 = CSG.cube(float3(21,-21,0), 20.0f);
+		_polygons = cube.union(cube2).toPolygons();
 	}
 	
 	public override void Draw()
 	{
-		debug_log _polygons.Length;
 		foreach (var polygon in _polygons)
 		{
-			debug_log "polygon";
 			for (int i = 0; i+2 < polygon._vertices.Length; i += 3)
 			{
 				var a = float4(polygon._vertices[i]._pos,1);
 				var b = float4(polygon._vertices[i+1]._pos,1);
 				var c = float4(polygon._vertices[i+2]._pos,1);
-				debug_log a;
 				draw DefaultShading
 				{
 					float4[] vertices : new float4[3] { a, b, c };
 					VertexPosition : vertex_attrib(vertices).XYZ;
-					DiffuseColor : float3(0.5f);
+					PixelColor: float4(polygon._vertices[i]._normal,1);
 					CullFace : PolygonFace.None;
 				};
 				
@@ -232,32 +229,45 @@ public class CSG
 	//       radius: 1
 	//     });
 
+	static float3[] vertices = new [] 
+	{ 
+		float3(-1,-1, -1),
+		float3( 1,-1, -1),
+		float3( 1, 1, -1),
+		float3(-1, 1, -1),
+		float3(-1,-1,  1),
+		float3( 1,-1,  1),
+		float3( 1, 1,  1),
+		float3(-1, 1,  1)
+	};
+
+	static ushort[] indices = new ushort[]
+	{
+		0,1,2,2,3,0,
+		1,5,6,6,2,1,
+		4,7,6,6,5,4,
+		0,3,7,7,4,0,
+		5,1,0,0,4,5,
+		2,6,7,7,3,2,
+	};
+
 	public static CSG cube(float3 center, float radius) 
 	{
 		var r = float3(radius);
-		var polygons = new Polygon[6];
-		polygons[0] = toPolygon(new []{0, 4, 6, 2}, float3(-1, 0, 0), r, center);
-		polygons[1] = toPolygon(new []{1, 3, 7, 5}, float3( 1, 0, 0), r, center);
-		polygons[2] = toPolygon(new []{0, 1, 5, 4}, float3(0, -1, 0), r, center);
-		polygons[3] = toPolygon(new []{2, 6, 7, 3}, float3(0,  1, 0), r, center);
-		polygons[4] = toPolygon(new []{0, 2, 3, 1}, float3(0, 0, -1), r, center);
-		polygons[5] = toPolygon(new []{4, 5, 7, 6}, float3(0, 0,  1), r, center);
-		return CSG.fromPolygons(polygons);
-	}
-	
-	static Polygon toPolygon(int[] info_0, float3 info_1, float3 r, float3 c)
-	{
-		var vertices = new Vertex[info_0.Length];
-		for (int i =0; i<info_0.Length;i++)
+		var polygons = new List<Polygon>();
+		for (int i =0; i<indices.Length; i+=3)
 		{
-			var pos = float3(
-				c.X + r.X * (2 * ((i & 1) != 0 ? 1 : 0) - 1),
-				c.Y + r.Y * (2 * ((i & 2) != 0 ? 1 : 0) - 1),
-				c.Z + r.Z * (2 * ((i & 4) != 0 ? 1 : 0) - 1));
-			
-			vertices[i] = new Vertex(pos, info_1);
+			var a = (vertices[indices[i+0]]*radius);
+			var b = (vertices[indices[i+1]]*radius);
+			var c = (vertices[indices[i+2]]*radius);
+			var n = Normalize(Cross(a,b));
+			var v = new List<Vertex>();
+			v.Add(new Vertex(a,n));	
+			v.Add(new Vertex(b,n));	
+			v.Add(new Vertex(c,n));	
+			polygons.Add(new Polygon(v));
 		}
-		return new Polygon(vertices);
+		return CSG.fromPolygons(EnumerableExtensions.ToArray(polygons));
 	}
 
 /*
