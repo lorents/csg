@@ -1,0 +1,32 @@
+﻿<Blueprint ClassName="Scene1" Version="0.9.1008">
+  <Scene RefId="Scene1" Name="Scene1" Type="Uno.Scenes.Scene">
+    <Layout RootX="10" RootY="50" PanX="40" PanY="40">
+      <DefaultConnector Node="Scene1" Property="Children" />
+    </Layout>
+    <Node RefId="Camera1" Name="Camera1" Type="Uno.Scenes.Entity" RecordProperties="false">
+      <Layout X="151" Y="48" RootX="10" RootY="50">
+        <DefaultConnector Node="Camera1" Property="Children" />
+      </Layout>
+      <Node RefId="Camera1Frustum" Name="Camera1Frustum" Type="Uno.Scenes.Frustum">
+        <Layout X="187" Y="26" RootX="10" RootY="50" />
+        <Property Name="FovDegrees" Type="float" Value="45f" />
+        <Property Name="Aspect" Type="float" Value="2.4f" />
+        <Property Name="ZNear" Type="float" Value="10f" />
+        <Property Name="ZFar" Type="float" Value="5000f" />
+      </Node>
+      <Node RefId="Camera1Transform" Name="Camera1Transform" Type="Uno.Scenes.Transform">
+        <Layout X="180" Y="56" RootX="10" RootY="50" />
+        <Property Name="Position" Type="float3" Value="100f, 100f, 100f" />
+        <Property Name="RotationDegrees" Type="float3" Value="325f, 45f, 120f" />
+      </Node>
+      <Property Name="Components">
+        <Ref>Camera1Transform</Ref>
+        <Ref>Camera1Frustum</Ref>
+      </Property>
+    </Node>
+    <Property Name="Camera" Type="Uno.Scenes.Entity" Ref="Camera1" />
+    <Property Name="Children">
+      <Ref>Camera1</Ref>
+    </Property>
+  </Scene>
+</Blueprint>
