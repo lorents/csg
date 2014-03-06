@@ -71,8 +71,10 @@ public class App : Uno.Application
 	
 	public override void Draw()
 	{
+		debug_log "Draw";
 		foreach (var polygon in _polygons)
 		{
+			debug_log "polygon with " + _polygons.Length + " vertices";
 			for (int i = 0; i+2 < polygon._vertices.Length; i += 3)
 			{
 				var a = float4(polygon._vertices[i]._pos,1);
@@ -82,7 +84,7 @@ public class App : Uno.Application
 				{
 					float4[] vertices : new float4[3] { a, b, c };
 					VertexPosition : vertex_attrib(vertices).XYZ;
-					PixelColor: float4(polygon._vertices[i]._normal,1);
+					//PixelColor: float4(polygon._vertices[i]._normal,1);
 					CullFace : PolygonFace.None;
 				};
 				
@@ -104,9 +106,9 @@ public class CSG
 	}
 	
 	// Construct a CSG solid from a list of `CSG.Polygon` instances.
-	static CSG fromPolygons(Polygon[] polygons) 
+	static CSG fromPolygons(IEnumerable<Polygon> polygons) 
 	{
-		return new CSG(polygons);
+		return new CSG(EnumerableExtensions.ToArray(polygons));
 	}
 
 	public CSG clone() 
@@ -443,26 +445,32 @@ public class Plane
 	// `coplanarFront` or `coplanarBack` depending on their orientation with
 	// respect to this plane. Polygons in front or in back of this plane go into
 	// either `front` or `back`.
+	
+	enum PolygonType
+	{
+		COPLANAR = 0,
+		FRONT = 1,
+		BACK = 2,
+		SPANNING = 3
+	}
+	
 	public void splitPolygon(Polygon polygon, List<Polygon> coplanarFront, List<Polygon> coplanarBack, List<Polygon> front, List<Polygon> back) 
 	{
 		
-		const int COPLANAR = 0;
-		const int FRONT = 1;
-		const int BACK = 2;
-		const int SPANNING = 3;
+
 
 		// Classify each point as well as the entire polygon into one of the above
 		// four classes.
-		var polygonType = 0;
-		var types = new List<int>();
+		PolygonType polygonType = PolygonType.COPLANAR;
+		var types = new List<PolygonType>();
 		for (var i = 0; i < polygon._vertices.Length; i++) 
 		{
 			var t = Dot(_normal, polygon._vertices[i]._pos) - _w;
 			var type = (t < -Plane.EPSILON) 
-				? BACK 
+				? PolygonType.BACK 
 				: (t > Plane.EPSILON) 
-					? FRONT 
-					: COPLANAR;
+					? PolygonType.FRONT 
+					: PolygonType.COPLANAR;
 			polygonType |= type;
 			types.Add(type);
 		}
@@ -470,31 +478,30 @@ public class Plane
 		// Put the polygon in the correct list, splitting it when necessary.
 		switch (polygonType) 
 		{
-			case COPLANAR:
-				(Dot(_normal,polygon._plane._normal) > 0 
-					? coplanarFront 
-					: coplanarBack).Add(polygon);
+			case PolygonType.FRONT: front.Add(polygon); break;
+			case PolygonType.BACK: back.Add(polygon); break;
+
+			case PolygonType.COPLANAR:
+				(Dot(_normal, polygon._plane._normal) > 0 ? coplanarFront : coplanarBack).Add(polygon);
 				break;
-			case FRONT:
-				front.Add(polygon);
-				break;
-			case BACK:
-				back.Add(polygon);
-				break;
-			case SPANNING:
+			
+			case PolygonType.SPANNING:
 				var f = new List<Vertex>(), b = new List<Vertex>();
+
 				for (var i = 0; i < polygon._vertices.Length; i++) 
 				{
 					var j = (i + 1) % polygon._vertices.Length;
-					var ti = types[i], tj = types[j];
+					
+					var ti = types[i], 
+						tj = types[j];
+					
 					var vi = polygon._vertices[i], 
 						vj = polygon._vertices[j];
-					if (ti != BACK) 
-						f.Add(vi);
-					if (ti != FRONT) 
-						b.Add(ti != BACK ? vi.clone() : vi);
-					
-					if ((ti | tj) == SPANNING) 
+
+					if (ti != PolygonType.BACK) f.Add(vi);
+					if (ti != PolygonType.FRONT) b.Add(ti != PolygonType.BACK ? vi.clone() : vi);
+
+					if ((ti | tj) == PolygonType.SPANNING) 
 					{
 						var t = (_w - Dot(_normal, vi._pos)) / Dot(_normal, vj._pos - vi._pos);
 						var v = vi.Interpolate(vj, t);
@@ -502,6 +509,7 @@ public class Plane
 						b.Add(v.clone());
 					}
 				}
+				
 				if (f.Count >= 3) 
 					front.Add(new Polygon(f, polygon._shared));
 
@@ -624,49 +632,40 @@ public class Node
 	}
 
 	// Recursively remove all polygons in `polygons` that are inside this BSP tree.
-	public List<Polygon> clipPolygons(List<Polygon> polygons) 
+	public IEnumerable<Polygon> clipPolygons(List<Polygon> polygons) 
 	{
-		if (_plane == null) 
-			return EnumerableExtensions.ToList(polygons);
+		if (_plane == null) return EnumerableExtensions.ToList(polygons); // copy list here
 		
-		var front = new List<Polygon>(), 
-			back = new List<Polygon>();
-		
+		var front = new List<Polygon>(), back = new List<Polygon>();
 		foreach (var polygon in polygons)
-		{
 			_plane.splitPolygon(polygon, front, back, front, back);
-		}
 		
-		if (_front != null) 
-			front = _front.clipPolygons(front);
+		var f = _front != null 
+			? (IEnumerable<Polygon>)_front.clipPolygons(front)
+			: (IEnumerable<Polygon>)front;
 		
-		if (_back != null) 
-			back = _back.clipPolygons(back);
-		else 
-			back = new List<Polygon>();
-		
-		return EnumerableExtensions.ToList(front.Union(back));
+		var b = _back != null
+			? (IEnumerable<Polygon>)_back.clipPolygons(back)
+			: (IEnumerable<Polygon>)back; // or empty?
+
+		return EnumerableExtensions.Union(f, b);
 	}
 
 	// Remove all polygons in this BSP tree that are inside the other BSP tree `bsp`.
 	public void clipTo(Node bsp) 
 	{
-		_polygons = bsp.clipPolygons(_polygons);
-		if (_front != null) 
-			_front.clipTo(bsp);
-		if (_back != null) 
-			_back.clipTo(bsp);
+		_polygons = EnumerableExtensions.ToList(bsp.clipPolygons(_polygons));
+		if (_front != null) _front.clipTo(bsp);
+		if (_back != null) _back.clipTo(bsp);
 	}
 
 	// Return a list of all polygons in this BSP tree.
-	public Polygon[] allPolygons() 
+	public IEnumerable<Polygon> allPolygons() 
 	{
 		var polygons = (IEnumerable<Polygon>)_polygons;
-		if (_front != null) 
-			polygons = EnumerableExtensions.Union(polygons, _front.allPolygons());
-		if (_back != null) 
-			polygons = EnumerableExtensions.Union(polygons, _back.allPolygons());
-		return EnumerableExtensions.ToArray(polygons);
+		if (_front != null) polygons = EnumerableExtensions.Union(polygons, _front.allPolygons());
+		if (_back != null) polygons = EnumerableExtensions.Union(polygons, _back.allPolygons());
+		return polygons;
 	}
 
 	// Build a BSP tree out of `polygons`. When called on an existing tree, the
@@ -675,13 +674,8 @@ public class Node
 	// (no heuristic is used to pick a good split).
 	public void build(IEnumerable<Polygon> polygons) 
 	{
-		var count = EnumerableExtensions.Count(polygons) ;
-		if (count == 0) return;
-
-		var first = EnumerableExtensions.First(polygons);
-		
-		if (_plane == null) 
-			_plane = first._plane.clone();
+		if (EnumerableExtensions.Count(polygons) == 0) return;
+		if (_plane == null) _plane = EnumerableExtensions.First(polygons)._plane.clone();
 		
 		var front = new List<Polygon>(), 
 			back = new List<Polygon>();
